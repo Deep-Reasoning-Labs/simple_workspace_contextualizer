@@ -94,56 +94,61 @@ BASE_GLOBS: list[str] = [
 ]
 
 IGNORE_GLOBS: set[str] = {
-    ".git/**",
-    ".hg/**",
-    ".svn/**",
-    ".idea/**",
-    ".vscode/**",
-    ".mypy_cache/**",
-    ".pytest_cache/**",
-    ".ruff_cache/**",
-    ".tox/**",
-    ".nox/**",
-    "__pycache__/**",
-    ".venv/**",
-    "venv/**",
-    "env/**",
-    "site-packages/**",
-    "**/site-packages/**",
-    "node_modules/**",
-    "**/node_modules/**",
-    "dist/**",
-    "**/dist/**",
-    "build/**",
-    "**/build/**",
-    "target/**",
-    "**/target/**",
-    "coverage/**",
-    "**/coverage/**",
-    ".coverage/**",
-    ".next/**",
-    ".nuxt/**",
-    ".terraform/**",
-    ".serverless/**",
-    ".cache/**",
-    "vendor/**",
-    "**/vendor/**",
-    "out/**",
-    "**/out/**",
-    "bin/**",
-    "**/bin/**",
-    "obj/**",
-    "**/obj/**",
-    ".eggs/**",
-    "*.egg-info/**",
-    "**/*.egg-info/**",
-    "*.dist-info/**",
-    "**/*.dist-info/**",
-    "pip-wheel-metadata/**",
-    "**/pip-wheel-metadata/**",
-    "__pypackages__/**",
+    "**/.git",
+    "**/.hg",
+    "**/.svn",
+    "**/.idea",
+    "**/.vscode",
+    "**/.mypy_cache",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/.tox",
+    "**/.nox",
+    "**/__pycache__",
+    "**/.venv",
+    "**/venv",
+    "**/env",
+    "**/site-packages",
+    "**/site-packages",
+    "**/node_modules",
+    "**/node_modules",
+    "**/dist",
+    "**/dist",
+    "**/build",
+    "**/build",
+    "**/target",
+    "**/target",
+    "**/coverage",
+    "**/coverage",
+    "**/.coverage",
+    "**/.next",
+    "**/.nuxt",
+    "**/.terraform",
+    "**/.serverless",
+    "**/.cache",
+    "**/vendor",
+    "**/vendor",
+    "**/out",
+    "**/out",
+    "**/bin",
+    "**/bin",
+    "**/obj",
+    "**/obj",
+    "**/.eggs",
+    "**/*.egg-info",
+    "**/*.egg-info",
+    "**/*.dist-info",
+    "**/*.dist-info",
+    "**/pip-wheel-metadata",
+    "**/pip-wheel-metadata",
+    "**/__pypackages__",
 
-    ".DS_Store",
+    "**/*.env",
+    "**/*.env.*",
+    "**/*~",
+    "**/*#",
+    "**/.DS_Store",
+    "**/.gitignore",
 }
 
 
@@ -151,12 +156,14 @@ class Args(argparse.Namespace):
     root: str
     override: bool
     globs: list[str]
+    ignore: list[str]
 
     def __init__(self) -> None:
         super().__init__()
         self.root = ""
         self.override = False
         self.globs = []
+        self.ignore = []
 
 
 def matches_any_glob(root: Path, path: Path, patterns: list[str] | set[str]) -> bool:
@@ -164,11 +171,11 @@ def matches_any_glob(root: Path, path: Path, patterns: list[str] | set[str]) -> 
     return any(rel.full_match(pattern) for pattern in patterns)
 
 
-def is_ignored(root: Path, path: Path) -> bool:
-    return matches_any_glob(root, path, IGNORE_GLOBS)
+def is_ignored(root: Path, path: Path, ignore_globs: list[str] | set[str]) -> bool:
+    return matches_any_glob(root, path, ignore_globs)
 
 
-def iter_files(root: Path, respect_ignores: bool) -> list[Path]:
+def iter_files(root: Path, respect_ignores: bool, ignore_globs: list[str] | set[str]) -> list[Path]:
     files: list[Path] = []
 
     for dirpath_str, dirnames, filenames in os.walk(root):
@@ -178,12 +185,12 @@ def iter_files(root: Path, respect_ignores: bool) -> list[Path]:
             dirnames[:] = sorted(
                 name
                 for name in dirnames
-                if not is_ignored(root, dirpath / name)
+                if not is_ignored(root, dirpath / name, ignore_globs)
             )
             filenames = sorted(
                 name
                 for name in filenames
-                if not is_ignored(root, dirpath / name)
+                if not is_ignored(root, dirpath / name, ignore_globs)
             )
         else:
             dirnames.sort()
@@ -194,13 +201,17 @@ def iter_files(root: Path, respect_ignores: bool) -> list[Path]:
 
     return files
 
-
-def collect_files(root: Path, base_globs: list[str], user_globs: list[str]) -> list[Path]:
+def collect_files(
+    root: Path,
+    base_globs: list[str],
+    user_globs: list[str],
+    ignore_globs: list[str] | set[str],
+) -> list[Path]:
     base_matches: set[Path] = set()
     user_matches: set[Path] = set()
 
     if base_globs:
-        for path in iter_files(root, respect_ignores=True):
+        for path in iter_files(root, respect_ignores=True, ignore_globs=ignore_globs):
             if matches_any_glob(root, path, base_globs):
                 base_matches.add(path)
 
@@ -213,7 +224,7 @@ def collect_files(root: Path, base_globs: list[str], user_globs: list[str]) -> l
     return sorted(all_matches, key=lambda path: path.relative_to(root).as_posix())
 
 
-def tree_lines(root: Path) -> list[str]:
+def tree_lines(root: Path, ignore_globs: list[str] | set[str]) -> list[str]:
     lines: list[str] = [f"{root.name}/"]
 
     for dirpath_str, dirnames, filenames in os.walk(root):
@@ -224,12 +235,12 @@ def tree_lines(root: Path) -> list[str]:
         dirnames[:] = sorted(
             name
             for name in dirnames
-            if not is_ignored(root, dirpath / name)
+            if not is_ignored(root, dirpath / name, ignore_globs)
         )
         filenames = sorted(
             name
             for name in filenames
-            if not is_ignored(root, dirpath / name)
+            if not is_ignored(root, dirpath / name, ignore_globs)
         )
 
         entries: list[tuple[str, bool]] = (
@@ -274,6 +285,13 @@ def parse_args() -> Args:
         help="Ignore the built-in base glob patterns",
     )
     _ = parser.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Additional ignore globs. May be provided multiple times.",
+    )
+    _ = parser.add_argument(
         "globs",
         nargs="*",
         help="Additional file glob patterns to include in <file_contents>",
@@ -287,12 +305,19 @@ def main() -> None:
     root: Path = Path(args.root).resolve()
     base_globs: list[str] = [] if args.override else BASE_GLOBS
     user_globs: list[str] = list(args.globs)
-    files: list[Path] = collect_files(root, base_globs, user_globs)
+    ignore_globs: list[str] = [*IGNORE_GLOBS, *args.ignore]
+
+    files: list[Path] = collect_files(
+        root,
+        base_globs,
+        user_globs,
+        ignore_globs,
+    )
 
     print("<workspace_context>")
 
     print("  <file_tree>")
-    for line in tree_lines(root):
+    for line in tree_lines(root, ignore_globs):
         print(f"    {line}")
     print("  </file_tree>")
 

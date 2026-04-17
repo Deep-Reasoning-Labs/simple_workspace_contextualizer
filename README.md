@@ -29,6 +29,7 @@ This tool packages that information into one stream.
 - Includes common toolchain / config files by default
 - Supports additional user-supplied glob patterns
 - Supports `--override` to disable the built-in file selection globs
+- Supports `--ignore GLOB` to add extra ignore globs, one per flag occurrence
 - Hides ignored paths from the file tree
 - Allows user-supplied globs to explicitly include ignored files in the emitted file contents
 - Produces a simple structured output format that is easy to paste into an LLM
@@ -55,7 +56,7 @@ This installs the CLI command:
 swc
 ```
 
-Or the full command name:
+If you expose an additional alias, document it here too:
 
 ```bash
 simple_workspace_contextualizer
@@ -68,7 +69,7 @@ simple_workspace_contextualizer
 ## Usage
 
 ```bash
-swc PROJECT_ROOT [--override] [GLOB ...]
+swc ROOT [--override] [--ignore GLOB]... [GLOB ...]
 ```
 
 ### Arguments
@@ -81,8 +82,29 @@ Disable the built-in default include globs.
 
 When `--override` is present, only the user-supplied globs are used for `<file_contents>`.
 
+#### `--ignore GLOB`
+Add one extra ignore glob pattern.
+
+This option may be provided multiple times. Each `--ignore` consumes exactly one glob. Ignore globs affect:
+
+- the emitted `<file_tree>`
+- files selected by the built-in default include globs
+
+User-supplied positional include globs still override ignore rules for `<file_contents>`.
+
+Examples:
+
+```bash
+swc . --ignore ".venv/**"
+swc . --ignore ".venv/**" --ignore "dist/**"
+swc . --ignore ".env" "**/*.custom"
+```
+
+In the last example, `.env` is ignored and `**/*.custom` is treated as a positional include glob, not another ignore glob.
+
+
 #### `GLOB ...`
-Zero or more additional glob patterns to include in `<file_contents>`.
+Zero or more additional file glob patterns to include in `<file_contents>`.
 
 These user globs are additive by default, and they can explicitly include files that would otherwise be ignored.
 
@@ -104,6 +126,18 @@ Only include files matching your own globs:
 
 ```bash
 swc . --override "src/**/*.py" "tests/**/*.py"
+```
+
+Add extra ignore rules on top of the built-in ignore list:
+
+```bash
+swc . --ignore ".venv/**" --ignore "dist/**"
+```
+
+Combine extra ignore rules with explicit include globs:
+
+```bash
+swc . --ignore "**/*.min.js" "**/*.map" "src/**/*.ts"
 ```
 
 Explicitly include something under an otherwise ignored path:
@@ -156,13 +190,16 @@ So the effective rule is:
 
 Ignored paths are hidden from the file tree and excluded from files selected by the built-in default glob set.
 
-However, user-supplied globs are allowed to explicitly include ignored files.
+You can also add extra ignore rules with `--ignore`.
+
+However, user-supplied positional include globs are allowed to explicitly include ignored files.
 
 That means:
 
 - ignored paths do **not** appear in `<file_tree>`
 - ignored files do **not** get included by default
-- ignored files **can** still appear in `<file_contents>` if the user explicitly requests them with a glob argument
+- `--ignore` adds more ignore rules on top of the built-in ignore list
+- ignored files **can** still appear in `<file_contents>` if the user explicitly requests them with a positional glob
 
 This is intentional: it keeps the default output clean while still allowing targeted overrides.
 
@@ -211,6 +248,8 @@ Examples include:
 - `*.egg-info/`
 - `*.dist-info/`
 
+You can add more patterns at runtime with repeated `--ignore GLOB` flags.
+
 ## Example workflow with an LLM
 
 Generate workspace context:
@@ -258,21 +297,3 @@ Or, if installed in editable mode:
 ```bash
 swc .
 ```
-
-## Naming
-
-Package name:
-
-```text
-simple-workspace-contextualizer
-```
-
-Default CLI:
-
-```text
-swc
-```
-
-## License
-
-MIT
