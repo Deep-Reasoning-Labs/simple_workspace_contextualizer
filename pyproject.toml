@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simple-workspace-contextualizer"
+version = "0.1.0"
+description = "Serialize a repository into XML-like workspace context for LLM input"
+readme = "README.md"
+requires-python = ">=3.13"
+
+[project.scripts]
+simple_workspace_contextualizer = "simple_workspace_contextualizer.cli:main"
+swc = "simple_workspace_contextualizer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
