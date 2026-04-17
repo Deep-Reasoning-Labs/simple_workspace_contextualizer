@@ -170,7 +170,6 @@ def matches_any_glob(root: Path, path: Path, patterns: list[str] | set[str]) -> 
     rel: Path = path.relative_to(root)
     return any(rel.full_match(pattern) for pattern in patterns)
 
-
 def is_ignored(root: Path, path: Path, ignore_globs: list[str] | set[str]) -> bool:
     return matches_any_glob(root, path, ignore_globs)
 
@@ -227,32 +226,27 @@ def collect_files(
 def tree_lines(root: Path, ignore_globs: list[str] | set[str]) -> list[str]:
     lines: list[str] = [f"{root.name}/"]
 
-    for dirpath_str, dirnames, filenames in os.walk(root):
-        dirpath: Path = Path(dirpath_str)
-        rel: Path = dirpath.relative_to(root)
-        depth: int = 0 if rel == Path(".") else len(rel.parts)
-
-        dirnames[:] = sorted(
-            name
-            for name in dirnames
-            if not is_ignored(root, dirpath / name, ignore_globs)
-        )
-        filenames = sorted(
-            name
-            for name in filenames
-            if not is_ignored(root, dirpath / name, ignore_globs)
+    def walk(directory: Path, prefix: str) -> None:
+        dir_entries: list[Path] = sorted(
+            (
+                path for path in directory.iterdir()
+                if not is_ignored(root, path, ignore_globs)
+            ),
+            key=lambda path: (not path.is_dir(), path.name.lower(), path.name),
         )
 
-        entries: list[tuple[str, bool]] = (
-            [(name, True) for name in dirnames]
-            + [(name, False) for name in filenames]
-        )
+        for index, path in enumerate(dir_entries):
+            is_last: bool = index == len(dir_entries) - 1
+            branch: str = "└── " if is_last else "├── "
+            suffix: str = "/" if path.is_dir() else ""
 
-        for i, (name, is_dir) in enumerate(entries):
-            branch: str = "└── " if i == len(entries) - 1 else "├── "
-            prefix: str = "  " * depth + branch
-            lines.append(prefix + name + ("/" if is_dir else ""))
+            lines.append(f"{prefix}{branch}{path.name}{suffix}")
 
+            if path.is_dir():
+                child_prefix: str = prefix + ("    " if is_last else "│   ")
+                walk(path, child_prefix)
+
+    walk(root, "")
     return lines
 
 def xml_cdata(text: str) -> str:

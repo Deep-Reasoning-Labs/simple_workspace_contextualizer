@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simple-workspace-contextualizer"
-version = "0.1.0"
+version = "0.1.2"
 description = "Serialize a repository into XML-like workspace context for LLM input"
 readme = "README.md"
 requires-python = ">=3.13"
