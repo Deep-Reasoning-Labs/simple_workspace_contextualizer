@@ -78,7 +78,6 @@ This prints:
 
 - `<workspace_context>`
 - `<file_tree>`
-- `</workspace_context>`
 
 and does **not** print `<file_contents>`.
 
@@ -180,9 +179,8 @@ swc --force subsets 'subsets/**/*.txt'
 
 Behavior:
 
-- if `--force` points to a directory, that subtree is traversed even if it is ignored
-- if `--force` points to a file, that file is allowed through even if it is ignored
-- `--ignore` still has higher practical priority for exclusion behavior during output filtering
+- If `--force` points to a directory, that subtree is traversed even if it is ignored
+- If --force points to a file, that file is traversed and can appear even if one of its parent directories would normally be skipped.
 
 ## `.swc_args`
 
