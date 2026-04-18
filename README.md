@@ -1,154 +1,100 @@
 # simple-workspace-contextualizer
 
-A small CLI for serializing a source repository into a structured, LLM-friendly context format.
+`swc` serializes a repository into a compact XML-like format that is easy to paste into an LLM.
 
-It prints:
+It is designed for fast repository inspection:
 
-- a filtered file tree for the workspace
-- the full contents of selected files
-- stable XML-like wrapper tags so the output can be pasted directly into an LLM prompt
+- the current working directory is treated as the project root
+- `.gitignore` files are respected
+- ignored directories are pruned eagerly for performance
+- `<file_tree>` is always printed
+- `<file_contents>` is only printed when you explicitly request files with include patterns
 
-The intended use case is: "take a repo and turn it into a single prompt payload that gives an LLM useful project context."
 
-## Why this exists
+Example:
 
-LLMs usually perform better when they can see:
+```
+swc
 
-- the repository structure
-- the important source files
-- toolchain and config files
-- README / markdown documentation
-- the exact source text, without reformatting or lossy transformations
-
-This tool packages that information into one stream.
-
-## Features
-
-- Recursively prints a workspace file tree
-- Includes common source files by default
-- Includes common toolchain / config files by default
-- Supports additional user-supplied glob patterns
-- Supports `--override` to disable the built-in file selection globs
-- Supports `--ignore GLOB` to add extra ignore globs, one per flag occurrence
-- Hides ignored paths from the file tree
-- Allows user-supplied globs to explicitly include ignored files in the emitted file contents
-- Produces a simple structured output format that is easy to paste into an LLM
+<workspace_context>
+  <file_tree>
+    swe-bench-pro-harness/
+    ├── README.md
+    ├── evaluate.sh
+    ├── inference.sh
+    ├── setup_evaluation.sh
+    └── setup_inference.sh
+  </file_tree>
+  <file_contents>
+    <file path="README.md">
+      ...
+    </file>
+    <file path="evaluate.sh">
+      ...
+    </file>
+    <file path="inference.sh">
+      ...
+    </file>
+    <file path="setup_evaluation.sh">
+      ...
+    </file>
+    <file path="setup_inference.sh">
+      ...
+    </file>
+  </file_contents>
+</workspace_context>
+```
 
 ## Installation
 
-### From PyPI
+If installing from pip:
 
 ```bash
 pip install simple-workspace-contextualizer
 ```
 
-### Local development
+If installing from a local checkout:
 
 ```bash
-git clone <your-repo-url>
-cd simple-workspace-contextualizer
-python -m pip install -e .
+pip install -e .
 ```
 
-This installs the CLI command:
+This installs the commands:
+
+```bash
+simple_workspace_contextualizer
+swc
+```
+
+## Basic usage
+
+Run from the project root:
 
 ```bash
 swc
 ```
 
-If you expose an additional alias, document it here too:
+This prints:
+
+- `<workspace_context>`
+- `<file_tree>`
+- `</workspace_context>`
+
+and does **not** print `<file_contents>`.
+
+To include file contents, pass one or more gitignore-style include patterns:
 
 ```bash
-simple_workspace_contextualizer
+swc '*.py'
+swc 'src/**/*.py' README.md
+swc 'docs/**/*.md' pyproject.toml
 ```
 
-## Requirements
-
-- Python 3.13+
-
-## Usage
-
-```bash
-swc ROOT [--override] [--ignore GLOB]... [GLOB ...]
-```
-
-### Arguments
-
-#### `ROOT`
-Root project directory to scan.
-
-#### `--override`
-Disable the built-in default include globs.
-
-When `--override` is present, only the user-supplied globs are used for `<file_contents>`.
-
-#### `--ignore GLOB`
-Add one extra ignore glob pattern.
-
-This option may be provided multiple times. Each `--ignore` consumes exactly one glob. Ignore globs affect:
-
-- the emitted `<file_tree>`
-- files selected by the built-in default include globs
-
-User-supplied positional include globs still override ignore rules for `<file_contents>`.
-
-Examples:
-
-```bash
-swc . --ignore ".venv/**"
-swc . --ignore ".venv/**" --ignore "dist/**"
-swc . --ignore ".env" "**/*.custom"
-```
-
-In the last example, `.env` is ignored and `**/*.custom` is treated as a positional include glob, not another ignore glob.
-
-
-#### `GLOB ...`
-Zero or more additional file glob patterns to include in `<file_contents>`.
-
-These user globs are additive by default, and they can explicitly include files that would otherwise be ignored.
-
-## Examples
-
-Serialize a repo with the default built-in file patterns:
-
-```bash
-swc .
-```
-
-Add a few extra file patterns:
-
-```bash
-swc . "docs/**/*.txt" "proto/**/*.proto"
-```
-
-Only include files matching your own globs:
-
-```bash
-swc . --override "src/**/*.py" "tests/**/*.py"
-```
-
-Add extra ignore rules on top of the built-in ignore list:
-
-```bash
-swc . --ignore ".venv/**" --ignore "dist/**"
-```
-
-Combine extra ignore rules with explicit include globs:
-
-```bash
-swc . --ignore "**/*.min.js" "**/*.map" "src/**/*.ts"
-```
-
-Explicitly include something under an otherwise ignored path:
-
-```bash
-swc . ".venv/lib/python3.13/site-packages/pip-25.3.dist-info/LICENSE.txt"
-```
+IMPORTANT: single-quote patterns that include special characters like '*' or '!'.
 
 ## Output format
 
-The tool emits XML-like structured text:
+`swc` prints XML-like output in this shape:
 
 ```xml
 <workspace_context>
@@ -156,144 +102,226 @@ The tool emits XML-like structured text:
     ...
   </file_tree>
   <file_contents>
-    <file path="src/example.py">
-      ...
-    </file>
-    <file path="pyproject.toml">
+    <file path="relative/path.py">
       ...
     </file>
   </file_contents>
 </workspace_context>
 ```
 
-### Semantics
+Notes:
 
-- `<file_tree>` contains the filtered directory tree
-- `<file_contents>` contains the full contents of selected files
-- each `<file>` element has a `path` attribute relative to the workspace root
-
-## File selection model
-
-The set of files included in `<file_contents>` is:
-
-1. the built-in default glob set
-2. plus any user-supplied globs
-
-If `--override` is used, the built-in default glob set becomes empty.
-
-So the effective rule is:
-
-- default mode: `default globs ∪ user globs`
-- override mode: `user globs`
+- `<file_tree>` is always present
+- `<file_contents>` is only present when include patterns were supplied
+- file paths are always relative to the current project root
 
 ## Ignore behavior
 
-Ignored paths are hidden from the file tree and excluded from files selected by the built-in default glob set.
+`swc` discovers `.gitignore` files in the repository and applies them relative to the directory that contains each `.gitignore`.
 
-You can also add extra ignore rules with `--ignore`.
+This means:
 
-However, user-supplied positional include globs are allowed to explicitly include ignored files.
+- root `.gitignore` patterns apply from the repo root
+- nested `subdir/.gitignore` patterns apply from `subdir/`
+- ignored directories are pruned immediately during traversal for performance
+- `.git` is implicitly excluded
 
-That means:
+If no `.gitignore` files exist, then there are no repository ignore rules other than the implicit `.git` exclusion.
 
-- ignored paths do **not** appear in `<file_tree>`
-- ignored files do **not** get included by default
-- `--ignore` adds more ignore rules on top of the built-in ignore list
-- ignored files **can** still appear in `<file_contents>` if the user explicitly requests them with a positional glob
+## Include patterns
 
-This is intentional: it keeps the default output clean while still allowing targeted overrides.
+Positional arguments are **gitignore-style include patterns**.
 
-## Default included files
+They do **not** affect traversal of ignored directories. They only select files for `<file_contents>` from the files that were actually traversed.
 
-The built-in include globs are aimed at "files that are useful to show an LLM."
-
-They include:
-
-- source files such as Python, JavaScript, TypeScript, Go, Rust, Java, C/C++, shell, SQL, and others
-- markdown files
-- common toolchain and config files such as:
-  - `Makefile`
-  - `Dockerfile`
-  - `pyproject.toml`
-  - `requirements.txt`
-  - `package.json`
-  - `tsconfig.json`
-  - `go.mod`
-  - `Cargo.toml`
-  - `pom.xml`
-  - Gradle files
-  - common lint / formatter config files
-
-## Typical ignored paths
-
-The ignore list is intended to filter out noisy or generated content such as:
-
-- VCS metadata
-- editor / IDE folders
-- caches
-- virtual environments
-- `node_modules`
-- build outputs
-- coverage artifacts
-- generated packaging metadata
-
-Examples include:
-
-- `.git/`
-- `.venv/`
-- `node_modules/`
-- `dist/`
-- `build/`
-- `__pycache__/`
-- `*.egg-info/`
-- `*.dist-info/`
-
-You can add more patterns at runtime with repeated `--ignore GLOB` flags.
-
-## Example workflow with an LLM
-
-Generate workspace context:
+Examples:
 
 ```bash
-swc . > workspace_context.xml
+swc '*.md'
+swc 'src/**/*.py'
+swc 'src/**/*.py' tests/test_smoke.py
 ```
 
-Then paste that output into your LLM prompt along with a task, for example:
+## `--ignore`
 
-> Here is the current repository context. Please explain the architecture, identify likely entry points, and suggest how to add feature X.
+Use `--ignore` to exclude files or directories from both `<file_tree>` and `<file_contents>`.
 
-## Design goals
+`--ignore` accepts gitignore-style patterns and may be provided multiple times.
 
-- Minimal dependencies
-- Easy to inspect
-- Easy to pipe to stdout
-- Easy to compose with shell tooling
-- Optimized for LLM context generation rather than archival fidelity
-
-## Non-goals
-
-- Full XML document modeling
-- Perfect reproduction of every file in a repository
-- Preserving large binary assets
-- Replacing dedicated indexing or retrieval systems
-
-## Limitations
-
-- Large repositories can produce very large outputs
-- The default globs are heuristic, not exhaustive
-- Ignored paths are policy-driven and may need adjustment for your codebase
-- Prompt quality still depends on what files are included
-
-## Development
-
-Run locally:
+Examples:
 
 ```bash
-python -m simple_workspace_contextualizer.cli .
+swc --ignore subsets
+swc --ignore 'subsets/**'
+swc --ignore '*.md'
+swc --ignore 'docs/**/*.md'
+swc --ignore 'build/'
 ```
 
-Or, if installed in editable mode:
+`--ignore` is useful for trimming noisy files from the output even when they are not ignored by `.gitignore`.
+
+`--ignore` prunes file traversal early, so it is also useful for large directories that would otherwise make file traversal slow.
+
+## `--force`
+
+Use `--force` to override ignored traversal for an exact file path or directory path.
+
+`--force` is **not** a glob. It must be a real path inside the current project root.
+
+This is primarily useful when a directory is ignored by `.gitignore` and would otherwise be pruned by an ignore pattern before `swc` could inspect it.
+
+Examples:
 
 ```bash
-swc .
+swc --force .venv
+swc --force generated 'generated/**/*.ts'
+swc --force subsets 'subsets/**/*.txt'
 ```
+
+Behavior:
+
+- if `--force` points to a directory, that subtree is traversed even if it is ignored
+- if `--force` points to a file, that file is allowed through even if it is ignored
+- `--ignore` still has higher practical priority for exclusion behavior during output filtering
+
+## `.swc_args`
+
+You can create a file named `.swc_args` in the project root containing default `swc` arguments.
+
+The file is a single line of space-separated arguments.
+
+Example:
+
+```text
+--ignore subsets 'src/**/*.py' 'README.md'
+```
+
+When present, `swc` loads `.swc_args` automatically and prepends those arguments before the command-line arguments you typed.
+
+That means you can saved and re-use common patterns and just type `swc` to repeat those queries.
+
+Your explicit command-line arguments are appended after the saved `.swc_args` arguments so you can still refine the query.
+
+### Disable loading
+
+Use either of these to skip `.swc_args` loading:
+
+```bash
+swc --no-load
+swc -nl
+```
+
+## `--save`
+
+Use `--save` to save the current effective arguments back to `.swc_args`.
+
+The save only happens after a successful run.
+
+Examples:
+
+```bash
+swc --ignore subsets 'src/**/*.py' --save
+swc --force generated 'generated/**/*.ts' --save
+```
+
+Notes:
+
+- `--save` itself is not written into `.swc_args`
+- `--no-load` / `-nl` are also not written into `.swc_args`
+
+## Shell quoting tip
+
+If a pattern contains shell wildcard characters, **single-quote it**.
+
+Examples:
+
+```bash
+swc '*.py'
+swc --ignore '*-requirements.txt'
+swc 'docs/**/*.md'
+```
+
+Why this matters:
+
+- unquoted wildcards are expanded by your shell **before** `swc` sees them
+- this can change the meaning of the command
+- single quotes are the safest default
+
+For example:
+
+```bash
+swc --ignore '*-requirements.txt'
+```
+
+is correct, but:
+
+```bash
+swc --ignore *-requirements.txt
+```
+
+may be expanded by the shell into multiple filenames before `swc` starts.
+
+## Recommended workflow
+
+### 1. Inspect the tree
+
+```bash
+swc
+```
+
+### 2. Add the files you want as context
+
+```bash
+swc 'src/**/*.py' 'README.md'
+```
+
+### 3. Trim noisy areas if needed
+
+```bash
+swc --ignore 'tests/fixtures/**' 'src/**/*.py'
+```
+
+### 4. Force a normally ignored subtree if needed
+
+```bash
+swc --force generated 'generated/**/*.ts'
+```
+
+### 5. Save a standing query
+
+```bash
+swc --ignore subsets 'src/**/*.py' 'README.md' --save
+```
+
+Then later:
+
+```bash
+swc
+```
+
+will automatically reuse those saved defaults unless you pass `--no-load`.
+
+## Example commands
+
+```bash
+swc
+swc '*.md'
+swc 'src/**/*.py' 'README.md'
+swc --ignore subsets 'src/**/*.py'
+swc --ignore 'build/' --ignore '*.log' 'src/**/*.py'
+swc --force generated 'generated/**/*.ts'
+swc --no-load 'src/**/*.py'
+swc 'src/**/*.py' --save
+```
+
+## Summary
+
+- run `swc` from the project root
+- `.gitignore` controls baseline traversal
+- `<file_tree>` is always printed
+- `<file_contents>` is opt-in
+- use positional patterns to include file contents
+- use `--ignore` to remove things from output
+- use `--force` to traverse ignored paths
+- use `.swc_args` and `--save` for standing queries
+- single-quote any pattern containing wildcard characters
